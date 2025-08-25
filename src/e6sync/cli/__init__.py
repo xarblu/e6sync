@@ -4,6 +4,7 @@
 import logging
 
 from argparse import ArgumentParser
+from pathlib import Path
 from tqdm import tqdm
 
 from e6sync.__about__ import __version__
@@ -31,9 +32,9 @@ def e6sync() -> int:
                         required=False,
                         default="INFO",
                         type=str.upper,
-                        choices=["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"]
-                        )
+                        choices=["DEBUG", "INFO", "WARN", "ERROR", "CRITICAL"])
     parser.add_argument("--library",
+                        type=Path,
                         required=False)
 
     args = parser.parse_args()
