@@ -1,13 +1,14 @@
 import logging
+import os
 import requests
 import time
 
 from enum import Enum
+from requests.adapters import HTTPAdapter, Retry
 from typing import Annotated
 from typing import Any
 from typing import Optional
 from urllib.parse import urljoin
-from requests.adapters import HTTPAdapter, Retry
 
 from e6sync.__about__ import __version__
 from .types import E621Post, USER_AGENT
@@ -132,8 +133,10 @@ class E621ApiClient:
                 logger.debug("Got empty batch - done")
                 break
 
-            # XXX: just for dev break after first
-            break
+            # just for dev break after first page
+            if os.getenv("DEV_MODE"):
+                logger.info("Broke early due to dev mode")
+                break
 
         logger.info(f"Fetched a total of {len(posts)} posts")
 
