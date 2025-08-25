@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "e6sync"
+dynamic = ["version"]
+description = "Downloader for the funny number site"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "Xarblu", email = "xarblu@protonmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: Implementation :: CPython"
+]
+dependencies = [
+    "requests",
+    "tqdm"
+]
+
+[project.urls]
+Documentation = "https://github.com/xarblu/e6sync#readme"
+Issues = "https://github.com/xarblu/e6sync/issues"
+Source = "https://github.com/xarblu/e6sync"
+
+[project.scripts]
+e6sync = "e6sync.cli:e6sync"
+
+[tool.hatch.version]
+path = "src/e6sync/__about__.py"
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/e6sync tests}"
+
+[tool.coverage.run]
+source_pkgs = ["e6sync", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/e6sync/__about__.py",
+]
+
+[tool.coverage.paths]
+e6sync = ["src/e6sync", "*/e6sync/src/e6sync"]
+tests = ["tests", "*/e6sync/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
