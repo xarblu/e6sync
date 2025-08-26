@@ -11,7 +11,7 @@ from typing import Annotated
 from typing import Any
 from typing import Optional
 
-from .util import date2path
+from .util import date2path, file_mtime, post_mtime
 from e6sync.api import E621Post, USER_AGENT
 
 logger = logging.getLogger(__name__)
@@ -108,6 +108,18 @@ class AssetRepository:
         :param post     An E621Post object
         :param sidecar  XMP Sidecar file to write
         """
+        # speedup: skip if there is no new info
+        if sidecar.is_file():
+            if (s := file_mtime(sidecar)) >= (p := post_mtime(post)):
+                logger.debug(f"Skipped sidecar: {sidecar}")
+                logger.debug(f"Sidecar time: {s}  Post time: {p}")
+                return
+            else:
+                logger.debug(f"Updating sidecar: {sidecar}")
+                logger.debug(f"Sidecar time: {s}  Post time: {p}")
+        else:
+            logger.debug(f"New sidecar: {sidecar}")
+
         argv: list[str] = ["exiftool"]
 
         argv += ["-DateTimeOriginal=" + post.created_at]
