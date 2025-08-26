@@ -185,7 +185,7 @@ class AssetRepository:
         For each file in root parse DateTimeOriginal from exif
         and sort into date directories
         """
-        logger.info("Starting migration 1")
+        logger.info("Starting migration 0 -> 1")
         for path in self.root.iterdir():
             if path.name == "library.json":
                 continue
@@ -213,7 +213,7 @@ class AssetRepository:
                 asset.rename(dest / asset.name)
                 sidecar.rename(dest / sidecar.name)
 
-        logger.info("Migration 1 succeeded")
+        logger.info("Migration 0 -> 1 succeeded")
         self.metadata["version"] = 1
         self._write_metadata()
 
