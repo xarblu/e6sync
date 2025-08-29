@@ -36,6 +36,9 @@ def e6sync() -> int:
     parser.add_argument("--library",
                         type=Path,
                         required=False)
+    parser.add_argument("--version",
+                        action="version",
+                        version=f"%(prog)s {__version__}")
 
     args = parser.parse_args()
 
