@@ -44,11 +44,18 @@ def e6sync() -> int:
     api = E621ApiClient(user=args.user, api_key=args.key)
     repo = AssetRepository(root=args.library)
 
+    logger.info("Fetching post lists")
+    favorites = api.favorites()
+
     logger.info("Starting download")
-
-    for favorite in tqdm(api.favorites()):
+    for favorite in tqdm(favorites):
         repo.update_post(post=favorite)
-
     logger.info("Download finished")
+
+    logger.info("Waiting for pending sidecar updates")
+    for update in tqdm(repo.sidecar_manager.updates):
+        if (e := update.exception()) is not None:
+            logger.exception(e)
+    logger.info("Sidecar updates finished")
 
     return 0

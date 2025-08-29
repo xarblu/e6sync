@@ -2,8 +2,6 @@ import json
 import logging
 import os
 import requests
-import subprocess
-import time
 
 from pathlib import Path
 from requests.adapters import HTTPAdapter, Retry
@@ -11,7 +9,8 @@ from typing import Annotated
 from typing import Any
 from typing import Optional
 
-from .util import date2path, file_mtime, post_mtime
+from .sidecar_manager import SidecarManager, ExifData
+from .util import date2path
 from e6sync.api import E621Post, USER_AGENT
 
 logger = logging.getLogger(__name__)
@@ -30,6 +29,7 @@ class AssetRepository:
     root: Annotated[Path, "Storage root"]
     metadata: Annotated[dict[str, Any], "Loaded content of library.json"]
     requests_session: Annotated[requests.Session, "Session for requests"]
+    sidecar_manager: Annotated[SidecarManager, "XMP Sidecar Manager"]
 
     def __init__(self, root: Optional[Path]) -> None:
         """
@@ -56,13 +56,8 @@ class AssetRepository:
             logger.warn(f"{f} missing - assuming version 0")
             self.metadata = {"version": 0}
 
-        # check if we have exiftool here
-        try:
-            subprocess.run(["exiftool", "-ver"],
-                           check=True, capture_output=True)
-        except subprocess.CalledProcessError as e:
-            logger.error("Could not find exiftool")
-            raise RuntimeError("exiftool not found") from e
+        # sidecar manager
+        self.sidecar_manager = SidecarManager()
 
         # setup requests session with retries + backoff
         self.requests_session = requests.Session()
@@ -102,70 +97,6 @@ class AssetRepository:
         with open(self.root / "library.json", "w") as fp:
             json.dump(self.metadata, fp)
 
-    def _write_sidecar(self, post: E621Post, sidecar: Path) -> None:
-        """
-        Write post metadata to an XMP Sidecar
-        :param post     An E621Post object
-        :param sidecar  XMP Sidecar file to write
-        """
-        # speedup: skip if there is no new info
-        if sidecar.is_file():
-            if (s := file_mtime(sidecar)) >= (p := post_mtime(post)):
-                logger.debug(f"Skipped sidecar: {sidecar}")
-                logger.debug(f"Sidecar time: {s}  Post time: {p}")
-                return
-            else:
-                logger.debug(f"Updating sidecar: {sidecar}")
-                logger.debug(f"Sidecar time: {s}  Post time: {p}")
-        else:
-            logger.debug(f"New sidecar: {sidecar}")
-
-        argv: list[str] = ["exiftool"]
-
-        argv += ["-DateTimeOriginal=" + post.created_at]
-
-        # e6 splits tags into types, we'll just write them as is
-        for _, tags in post.tags.items():
-            for tag in tags:
-                argv += ["-TagsList=" + tag]
-
-        argv += ["-Description=" + post.description]
-
-        # file options
-        argv += ["-overwrite_original", str(sidecar)]
-
-        logger.debug("Invoking " + " ".join(argv))
-        try:
-            subprocess.run(argv, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            logger.error("exiftool failed:\n"
-                         f"stdout: {e.stdout}\n"
-                         f"stderr: {e.stderr}\n")
-            raise RuntimeError("exiftool failure") from e
-
-    def _read_sidecar(self, sidecar: Path) -> dict[str, str | list[str]]:
-        """
-        Read a XMP file
-        :param sidecar  A XMP sidecar file
-        :return json  exiftool -j output as dict
-        """
-        if not sidecar.is_file():
-            raise FileNotFoundError(f"sidecar file {sidecar} does not exist")
-
-        argv: list[str] = ["exiftool", "-j", str(sidecar)]
-
-        logger.debug("Invoking " + " ".join(argv))
-        try:
-            exif = subprocess.run(argv, check=True,
-                                  capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            logger.error("exiftool failed:\n"
-                         f"stdout: {e.stdout}\n"
-                         f"stderr: {e.stderr}\n")
-            raise RuntimeError("exiftool failure") from e
-
-        return json.loads(exif.stdout)[0]
-
     def update_post(self, post: E621Post) -> None:
         """
         Fetch a post if it isn't present and update
@@ -175,10 +106,18 @@ class AssetRepository:
         ext: str = os.path.splitext(post.file["url"])[1]
 
         # parse date, we only care about YYYY-MM-DD
-        date = time.strptime(post.created_at[:10], "%Y-%m-%d")
+        exif = ExifData.fromPost(post)
+
+        # shouldn't be possible to reach this but check just in case
+        # and to make mypy happy
+        if exif.DateTimeOriginal is None:
+            raise ValueError(f"Post {post.id} does not provide"
+                             " valid created_at time")
 
         # library/YYYY/MM/DD/ID.EXT
-        dest: Path = self.root / date2path(date) / str(str(post.id) + ext)
+        dest: Path = (self.root
+                      / date2path(exif.DateTimeOriginal)
+                      / str(str(post.id) + ext))
 
         # library/YYYY/MM/DD/ID.EXT.xmp
         sidecar: Path = dest.with_suffix(dest.suffix + ".xmp")
@@ -189,7 +128,7 @@ class AssetRepository:
         if not dest.is_file():
             self._fetch_post(post.file["url"], dest)
 
-        self._write_sidecar(post, sidecar)
+        self.sidecar_manager.update_sidecar(post, sidecar)
 
     def _migration_0(self) -> None:
         """
@@ -210,14 +149,13 @@ class AssetRepository:
             if ((asset := path).is_file() and
                (sidecar := path.with_suffix(path.suffix + ".xmp")).is_file()):
 
-                exif = self._read_sidecar(sidecar)
+                exif: ExifData = self.sidecar_manager.read_sidecar(sidecar)
 
-                if not isinstance(exif["DateTimeOriginal"], str):
-                    raise TypeError("DateTimeOriginal should be str")
+                if exif.DateTimeOriginal is None:
+                    raise ValueError("DateTimeOriginal is not set "
+                                     f"in {sidecar}")
 
-                # parse date, we only care about YYYY:MM:DD
-                date = time.strptime(exif["DateTimeOriginal"][:10], "%Y:%m:%d")
-                dest = self.root / date2path(date)
+                dest = self.root / date2path(exif.DateTimeOriginal)
 
                 dest.mkdir(parents=True, exist_ok=True)
 
