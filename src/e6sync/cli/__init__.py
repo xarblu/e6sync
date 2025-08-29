@@ -55,10 +55,4 @@ def e6sync() -> int:
         repo.update_post(post=favorite)
     logger.info("Download finished")
 
-    logger.info("Waiting for pending sidecar updates")
-    for update in tqdm(repo.sidecar_manager.updates):
-        if (e := update.exception()) is not None:
-            logger.exception(e)
-    logger.info("Sidecar updates finished")
-
     return 0

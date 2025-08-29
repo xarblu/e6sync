@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 
-from concurrent.futures import ProcessPoolExecutor, Future
-from pathlib import Path
-from typing import Annotated
-from typing import Optional
 from dataclasses import dataclass
+from pathlib import Path
+from subprocess import Popen, PIPE, DEVNULL
 from time import struct_time, strftime, strptime
+from typing import Annotated
+from typing import Any
+from typing import Optional
 
 from e6sync.api import E621Post
 
@@ -102,67 +102,104 @@ class ExifData:
 
 class SidecarManager:
     """
-    Class to manage XMP sidecar files concurrently
+    Class to manage XMP sidecar files with exiftool
     """
 
-    executor: Annotated[ProcessPoolExecutor, "Executor for exiftool calls"]
-    updates: Annotated[list[Future[None]], "Pending update operations"]
+    exiftool: Annotated[Popen, "exiftool process"]
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Constructor
         """
-        # check if we have exiftool here
-        try:
-            subprocess.run(["exiftool", "-ver"],
-                           check=True, capture_output=True)
-        except subprocess.CalledProcessError as e:
-            logger.error("Could not find exiftool")
-            raise RuntimeError("exiftool not found") from e
+        self.exiftool = Popen(["exiftool",
+                               "-j",
+                               "-stay_open", "True",
+                               "-@", "-"],
+                              stdin=PIPE,
+                              stdout=PIPE,
+                              stderr=DEVNULL)
 
-        # for now always use 4 workers which should be enough
-        # TODO: maybe make this user configurable
-        self.executor = ProcessPoolExecutor(max_workers=4)
-        self.updates = []
-
-    def __del__(self):
+    def __del__(self) -> None:
         """
         Desctructor
         """
-        self.executor.shutdown(wait=True)
+        # let exiftool finish (with 30s timeout), then kill it
+        if (stdin := self.exiftool.stdin) is not None:
+            stdin.write("-stay_open\nFalse\n".encode("utf-8"))
+            stdin.flush()
+        else:
+            logger.error("exiftool stdin is bad")
 
-    @staticmethod
-    def _read_sidecar(sidecar: Path) -> ExifData:
+        try:
+            self.exiftool.wait(30)
+        except TimeoutError:
+            self.exiftool.kill()
+
+    def _exiftoolSubmit(self, args: list[str]) -> Any:
         """
-        Read a XMP file, sync version
+        Submit args to exiftool,
+        """
+
+        logger.debug("exiftool call: {args}")
+
+        if (stdin := self.exiftool.stdin) is not None:
+            for arg in args + ["-j", "-execute"]:
+                # exiftool -@ ARGFILE:
+                # for lines beginning with "#[CSTR]" the
+                # rest of the line is treated as a C string
+                # allowing standard C escape sequences such as "\n"
+                #
+                # without this newlines stay escaped e.g. in Description
+                arg_enc = ("#[CSTR]".encode("utf-8")
+                           + arg.encode("unicode_escape")
+                           + b"\n")
+                stdin.write(arg_enc)
+            stdin.flush()
+        else:
+            logger.error("exiftool stdin is bad")
+
+        if (stdout := self.exiftool.stdout) is not None:
+            # read until '\n{ready}'
+            # not sure if there's a better way...
+            # most read operations block indefinetly
+            # because technically EOF is never reached
+            response: bytes = b""
+            while True:
+                response += stdout.read(1)
+                if response[-8:] == b"\n{ready}":
+                    break
+
+            response = response[:-8]
+
+            logger.debug(f"exiftool response: {response.decode()}")
+
+            if response:
+                return json.loads(response)
+            else:
+                return None
+        else:
+            logger.error("exiftool stdout is bad")
+
+    def read_sidecar(self, sidecar: Path) -> ExifData:
+        """
+        Read a XMP file
         :param sidecar  A XMP sidecar file
         :return json  exiftool -j output as ExifData
         """
         if not sidecar.is_file():
             return ExifData()
 
-        argv: list[str] = ["exiftool", "-j", str(sidecar)]
+        args: list[str] = [str(sidecar)]
 
-        logger.debug("Invoking " + " ".join(argv))
-        try:
-            exif = subprocess.run(argv, check=True,
-                                  capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            logger.error("exiftool failed:\n"
-                         f"stdout: {e.stdout}\n"
-                         f"stderr: {e.stderr}\n")
-            raise RuntimeError("exiftool failure") from e
+        return ExifData.fromExiftool(self._exiftoolSubmit(args)[0])
 
-        return ExifData.fromExiftool(json.loads(exif.stdout)[0])
-
-    @staticmethod
-    def _update_sidecar(post: E621Post, sidecar: Path) -> None:
+    def update_sidecar(self, post: E621Post, sidecar: Path) -> None:
         """
-        Write post metadata to an XMP Sidecar, sync version
+        Write post metadata to an XMP Sidecar
         :param post     An E621Post object
         :param sidecar  XMP Sidecar file to write
         """
-        current_exif: ExifData = SidecarManager._read_sidecar(sidecar)
+        current_exif: ExifData = self.read_sidecar(sidecar)
         new_exif: ExifData = ExifData.fromPost(post)
 
         logger.debug(f"Current: {current_exif}")
@@ -175,41 +212,12 @@ class SidecarManager:
 
         logger.debug(f"Creating/Updating sidecar: {sidecar}")
 
-        argv: list[str] = ["exiftool"]
+        args: list[str] = []
 
         # exif options
-        argv += new_exif.asExiftoolArgs()
+        args += new_exif.asExiftoolArgs()
 
         # file options
-        argv += ["-overwrite_original", str(sidecar)]
+        args += ["-overwrite_original", str(sidecar)]
 
-        logger.debug("Invoking " + " ".join(argv))
-        try:
-            subprocess.run(argv, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            logger.error("exiftool failed:\n"
-                         f"stdout: {e.stdout}\n"
-                         f"stderr: {e.stderr}\n")
-            raise RuntimeError("exiftool failure") from e
-
-    def read_sidecar(self, sidecar: Path) -> ExifData:
-        """
-        Read a XMP file, async version
-        :param sidecar  A XMP sidecar file
-        :return json  exiftool -j output as dict
-        """
-        return self.executor.submit(
-                SidecarManager._read_sidecar,
-                sidecar
-                ).result()
-
-    def update_sidecar(self, post: E621Post, sidecar: Path) -> None:
-        """
-        Write post metadata to an XMP Sidecar, async version
-        :param post     An E621Post object
-        :param sidecar  XMP Sidecar file to write
-        """
-        self.updates.append(
-                self.executor.submit(
-                    SidecarManager._update_sidecar,
-                    post, sidecar))
+        self._exiftoolSubmit(args)
