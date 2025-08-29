@@ -112,7 +112,6 @@ class SidecarManager:
         Constructor
         """
         self.exiftool = Popen(["exiftool",
-                               "-j",
                                "-stay_open", "True",
                                "-@", "-"],
                               stdin=PIPE,
