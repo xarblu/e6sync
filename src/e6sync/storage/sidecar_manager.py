@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from random import randint
 from subprocess import Popen, PIPE, DEVNULL
 from typing import Annotated
 from typing import Any
@@ -141,10 +142,21 @@ class SidecarManager:
         Submit args to exiftool,
         """
 
-        logger.debug(f"exiftool call: {args}")
+        # call id send with -executeNUM and expected in {readyNUM}
+        # we'll throw this in here for 2 reasons:
+        # - avoids shenanigans with verbosity options according to
+        #   exiftool manpage (essentially ensures {readyNUM is always sent})
+        # - decreases likelyhood of falsely matching {ready} e.g.
+        #   if for whatever reason Description contains it
+        #   (if there still is a bad match json.loads() should just
+        #   throw an error though because there most likely will be an
+        #   unclosed string)
+        call_id: int = randint(1000, 9999)
+
+        logger.debug(f"exiftool call {call_id}: {args}")
 
         if (stdin := self.exiftool.stdin) is not None:
-            for arg in args + ["-j", "-execute"]:
+            for arg in args + ["-j", f"-execute{call_id}"]:
                 # exiftool -@ ARGFILE:
                 # for lines beginning with "#[CSTR]" the
                 # rest of the line is treated as a C string
@@ -165,17 +177,19 @@ class SidecarManager:
             # most read operations block indefinetly
             # because technically EOF is never reached
             response: bytes = b""
+            ready: bytes = ("{ready" + str(call_id) + "}").encode("utf-8")
             while True:
                 response += stdout.read(1)
-                if response[-8:] == b"\n{ready}":
+                if response[-len(ready):] == ready:
                     break
 
-            response = response[:-8]
+            # we expect json so strip() doesn't remove anthing valuable
+            decoded = response[:-len(ready)].decode("utf-8").strip()
 
-            logger.debug(f"exiftool response: {response.decode()}")
+            logger.debug(f"exiftool response: {decoded}")
 
-            if response:
-                return json.loads(response)
+            if decoded:
+                return json.loads(decoded)
             else:
                 return None
         else:
