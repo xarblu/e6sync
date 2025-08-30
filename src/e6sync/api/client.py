@@ -105,8 +105,11 @@ class E621ApiClient:
         while True:
             params: dict[str, str] = {}
 
-            # always fetch max amount per page
-            params["limit"] = "320"
+            # always fetch max amount per page, unless DEV_MODE then 10 is enough
+            if os.getenv("DEV_MODE"):
+                params["limit"] = "10"
+            else:
+                params["limit"] = "320"
 
             # if this isn't the initial fetch we have to
             # fetch a specific page
