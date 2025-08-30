@@ -10,7 +10,6 @@ from typing import Any
 from typing import Optional
 from urllib.parse import urljoin
 
-from e6sync.__about__ import __version__
 from .types import E621Post, USER_AGENT
 
 logger = logging.getLogger(__name__)

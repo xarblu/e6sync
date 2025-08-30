@@ -103,6 +103,8 @@ class AssetRepository:
         its sidecar metadata
         :param post  An E621Post object
         """
+        logger.debug(f"Processing post: {post}")
+
         ext: str = os.path.splitext(post.file["url"])[1]
 
         # parse date, we only care about YYYY-MM-DD

@@ -4,9 +4,9 @@ import json
 import logging
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from subprocess import Popen, PIPE, DEVNULL
-from time import struct_time, strftime, strptime
 from typing import Annotated
 from typing import Any
 from typing import Optional
@@ -23,7 +23,7 @@ class ExifData:
     """
 
     # exif tags
-    DateTimeOriginal: Annotated[Optional[struct_time],
+    DateTimeOriginal: Annotated[Optional[datetime],
                                 "post created_at"] = None
     Description: Annotated[Optional[str], "post description"] = None
     TagsList: Annotated[Optional[list[str]], "post flattened tags"] = None
@@ -33,7 +33,8 @@ class ExifData:
         """
         Parse E621 post to ExifData
         """
-        DateTimeOriginal = strptime(post.created_at, "%Y-%m-%dT%H:%M:%S.%f%z")
+        DateTimeOriginal = datetime.strptime(post.created_at,
+                                             "%Y-%m-%dT%H:%M:%S.%f%z")
 
         Description = None
         if (val := post.description) != "":
@@ -61,7 +62,7 @@ class ExifData:
             # apparently this can have multiple formats
             for fmt in ["%Y:%m:%d %H:%M:%S.%f%z", "%Y:%m:%d %H:%M:%S"]:
                 try:
-                    DateTimeOriginal = strptime(val, fmt)
+                    DateTimeOriginal = datetime.strptime(val, fmt)
                     break
                 except ValueError:
                     pass
@@ -88,8 +89,9 @@ class ExifData:
         args: list[str] = []
 
         if self.DateTimeOriginal is not None:
-            args += ["-DateTimeOriginal=" + strftime("%Y:%m:%d %H:%M:%S.%f%z",
-                                                     self.DateTimeOriginal)]
+            fmt: str = "%Y:%m:%d %H:%M:%S.%f%z"
+            args += ["-DateTimeOriginal="
+                     + self.DateTimeOriginal.strftime(fmt)]
 
         if self.Description is not None:
             args += ["-Description=" + self.Description]
@@ -139,7 +141,7 @@ class SidecarManager:
         Submit args to exiftool,
         """
 
-        logger.debug("exiftool call: {args}")
+        logger.debug(f"exiftool call: {args}")
 
         if (stdin := self.exiftool.stdin) is not None:
             for arg in args + ["-j", "-execute"]:
