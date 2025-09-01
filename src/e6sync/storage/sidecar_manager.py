@@ -217,6 +217,13 @@ class SidecarManager:
         current_exif: ExifData = self.read_sidecar(sidecar)
         new_exif: ExifData = ExifData.fromPost(post)
 
+        # meta-tag to find managed assets
+        if (tags := new_exif.TagsList) is None:
+            tags = []
+
+        if "{e6sync}" not in tags:
+            tags.append("{e6sync}")
+
         logger.debug(f"Current: {current_exif}")
         logger.debug(f"New: {new_exif}")
 
