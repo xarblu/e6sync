@@ -5,6 +5,7 @@ from e6sync.__about__ import __version__
 
 USER_AGENT = f"e6sync/{__version__} (by xarblu on e621)"
 
+
 @dataclass(frozen=True)
 class E621Post:
     """
@@ -33,4 +34,5 @@ class E621Post:
     has_notes: bool
     approver_id: Optional[int] = None
     uploader_id: Optional[int] = None
+    uploader_name: Optional[str] = None
     duration: Optional[float] = None
