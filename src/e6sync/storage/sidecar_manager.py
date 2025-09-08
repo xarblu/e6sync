@@ -41,7 +41,12 @@ class ExifData:
 
         Description = None
         if (val := post.description) != "":
-            Description = val
+            # the issue:
+            # e6 likes sending '\xa0' (supposedly a non breaking space)
+            # and apparently python does not decode that properly
+            # to avoid unneeded sidecar updates backslashreplace everything
+            # that isn't pure ascii
+            Description = val.encode("ascii", "backslashreplace").decode()
 
         TagsList = []
 
@@ -249,3 +254,4 @@ class SidecarManager:
         self._exiftoolSubmit(args)
 
         return AssetChange.UPDATED
+
