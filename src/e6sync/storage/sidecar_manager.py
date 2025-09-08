@@ -15,6 +15,7 @@ from typing import Optional
 from e6sync.api import E621Post
 
 from .types import AssetChange
+from .util import exiftool_sanitize
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +80,11 @@ class ExifData:
 
         Description = None
         if isinstance(val := post.get("Description"), str):
-            Description = val
+            Description = exiftool_sanitize(val)
 
         TagsList = []
         if isinstance(val := post.get("TagsList"), list):
-            # exiftool decides to encode items as int in their json response
-            # if they are pure numbers e.g. for year numbers
-            TagsList = [str(x) for x in val]
+            TagsList = [exiftool_sanitize(x) for x in val]
 
         return ExifData(
                 DateTimeOriginal=DateTimeOriginal,
