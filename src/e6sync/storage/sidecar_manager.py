@@ -14,6 +14,8 @@ from typing import Optional
 
 from e6sync.api import E621Post
 
+from .types import AssetChange
+
 logger = logging.getLogger(__name__)
 
 
@@ -208,11 +210,13 @@ class SidecarManager:
 
         return ExifData.fromExiftool(self._exiftoolSubmit(args)[0])
 
-    def update_sidecar(self, post: E621Post, sidecar: Path) -> None:
+    def update_sidecar(self, post: E621Post, sidecar: Path) -> AssetChange:
         """
         Write post metadata to an XMP Sidecar
         :param post     An E621Post object
         :param sidecar  XMP Sidecar file to write
+        :return         AssetChanged.UNCHANGED if not updated
+                        AssetChange.UPDATED if updated
         """
         current_exif: ExifData = self.read_sidecar(sidecar)
         new_exif: ExifData = ExifData.fromPost(post)
@@ -230,7 +234,7 @@ class SidecarManager:
         # speedup: skip if there is no changed info
         if current_exif == new_exif:
             logger.debug(f"Skipped sidecar: {sidecar} - already up-to-date")
-            return
+            return AssetChange.UNCHANGED
 
         logger.debug(f"Creating/Updating sidecar: {sidecar}")
 
@@ -243,3 +247,5 @@ class SidecarManager:
         args += ["-overwrite_original", str(sidecar)]
 
         self._exiftoolSubmit(args)
+
+        return AssetChange.UPDATED

@@ -11,6 +11,7 @@ from typing import Optional
 
 from .sidecar_manager import SidecarManager, ExifData
 from .util import date2path
+from .types import StatCounter, AssetChange
 from e6sync.api import E621Post, USER_AGENT
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class AssetRepository:
     metadata: Annotated[dict[str, Any], "Loaded content of library.json"]
     requests_session: Annotated[requests.Session, "Session for requests"]
     sidecar_manager: Annotated[SidecarManager, "XMP Sidecar Manager"]
+    stats: Annotated[StatCounter, "Stat Counter"]
 
     def __init__(self, root: Optional[Path]) -> None:
         """
@@ -58,6 +60,9 @@ class AssetRepository:
 
         # sidecar manager
         self.sidecar_manager = SidecarManager()
+
+        # stat counter
+        self.stats = StatCounter()
 
         # setup requests session with retries + backoff
         self.requests_session = requests.Session()
@@ -127,10 +132,21 @@ class AssetRepository:
         # ensure the target dir exists here, all following methods expect it
         dest.parent.mkdir(parents=True, exist_ok=True)
 
+        # track asset state
+        asset_state: AssetChange = AssetChange.UNCHANGED
+        sidecar_state: AssetChange = AssetChange.UNCHANGED
+
         if not dest.is_file():
             self._fetch_post(post.file["url"], dest)
+            asset_state = AssetChange.NEW
 
-        self.sidecar_manager.update_sidecar(post, sidecar)
+        sidecar_state = self.sidecar_manager.update_sidecar(post, sidecar)
+
+        self.stats.processed += 1
+        if asset_state == AssetChange.NEW:
+            self.stats.new += 1
+        elif sidecar_state == AssetChange.UPDATED:
+            self.stats.updated += 1
 
     def _migration_0(self) -> None:
         """
@@ -180,3 +196,11 @@ class AssetRepository:
                     self._migration_0()
                 case _:
                     raise ValueError(f"Unknown migration {migration}")
+
+    def log_stats(self) -> None:
+        """
+        Log stats at INFO log level
+        """
+        logger.info(f"Total processed assets: {self.stats.processed}")
+        logger.info(f"            New assets: {self.stats.new}")
+        logger.info(f"        Updated assets: {self.stats.updated}")

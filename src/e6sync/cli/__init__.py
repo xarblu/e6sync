@@ -55,4 +55,6 @@ def e6sync() -> int:
         repo.update_post(post=favorite)
     logger.info("Download finished")
 
+    repo.log_stats()
+
     return 0
