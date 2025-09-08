@@ -83,7 +83,9 @@ class ExifData:
 
         TagsList = []
         if isinstance(val := post.get("TagsList"), list):
-            TagsList = val
+            # exiftool decides to encode items as int in their json response
+            # if they are pure numbers e.g. for year numbers
+            TagsList = [str(x) for x in val]
 
         return ExifData(
                 DateTimeOriginal=DateTimeOriginal,
@@ -254,4 +256,3 @@ class SidecarManager:
         self._exiftoolSubmit(args)
 
         return AssetChange.UPDATED
-
