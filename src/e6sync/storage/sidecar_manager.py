@@ -62,7 +62,8 @@ class ExifData:
         Parse exiftool json ouput to ExifData
         """
         DateTimeOriginal = None
-        if isinstance(val := post.get("DateTimeOriginal"), str):
+        val = post.get("DateTimeOriginal")
+        if isinstance(val, str):
             # apparently this can have multiple formats
             for fmt in ["%Y:%m:%d %H:%M:%S.%f%z", "%Y:%m:%d %H:%M:%S"]:
                 try:
@@ -72,14 +73,34 @@ class ExifData:
                     pass
             else:
                 raise ValueError(f"Could not parse DateTimeOriginal: {val}")
+        elif val is None:
+            pass
+        else:
+            logger.warn("exiftool returned bad type "
+                        f"for DateTimeOriginal: {type(val)}")
 
         Description = None
-        if isinstance(val := post.get("Description"), str):
+        val = post.get("Description")
+        if (isinstance(val, str)
+                or isinstance(val, int)
+                or isinstance(val, float)
+                or isinstance(val, bool)):
             Description = exiftool_sanitize(val)
+        elif val is None:
+            pass
+        else:
+            logger.warn("exiftool returned bad type "
+                        f"for Description: {type(val)}")
 
         TagsList = []
-        if isinstance(val := post.get("TagsList"), list):
+        val = post.get("TagsList")
+        if isinstance(val, list):
             TagsList = [exiftool_sanitize(x) for x in val]
+        elif val is None:
+            pass
+        else:
+            logger.warn("exiftool returned bad type "
+                        f"for TagsList: {type(val)}")
 
         return ExifData(
                 DateTimeOriginal=DateTimeOriginal,

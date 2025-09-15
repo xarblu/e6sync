@@ -16,7 +16,7 @@ def date2path(date: datetime) -> Path:
             / Path(str(date.day).rjust(2, "0")))
 
 
-def exiftool_sanitize(s: str | int) -> str:
+def exiftool_sanitize(s: str | int | float | bool) -> str:
     """
     :param s  Exiftool "strings"
     """
@@ -24,7 +24,7 @@ def exiftool_sanitize(s: str | int) -> str:
     # e6sync ... --log debug |& tee e6sync.log
     # perl -e 'my $current; my $new; while (my $line = <>) { if ($line =~ /^DEBUG:e6sync.storage.sidecar_manager:Current: (.*)$/) { $current = $1; } if ($line =~ /^DEBUG:e6sync.storage.sidecar_manager:New: (.*)$/) { $new = $1; if ($current ne $new) { print "Diff:\n$current\n$new\n\n"; } } }' < e6sync.log
 
-    # exiftool decides to encode items as int in their json response
+    # exiftool decides to encode items as int/float in their json response
     # if they are pure numbers e.g. for year numbers
     s = str(s)
 
