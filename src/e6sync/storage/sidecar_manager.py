@@ -15,7 +15,7 @@ from typing import Optional
 from e6sync.api import E621Post
 
 from .types import AssetChange
-from .util import exiftool_sanitize
+from .util import exiftool_sanitize, exiftool_cstr
 
 logger = logging.getLogger(__name__)
 
@@ -166,10 +166,7 @@ class SidecarManager:
                 # allowing standard C escape sequences such as "\n"
                 #
                 # without this newlines stay escaped e.g. in Description
-                arg_enc = ("#[CSTR]".encode("utf-8")
-                           + arg.encode("unicode_escape")
-                           + b"\n")
-                stdin.write(arg_enc)
+                stdin.write(exiftool_cstr(arg))
             stdin.flush()
         else:
             logger.error("exiftool stdin is bad")

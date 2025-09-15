@@ -70,3 +70,23 @@ def exiftool_sanitize(s: str | int) -> str:
     s = s_bytes_san.decode("utf-8")
 
     return s
+
+
+def exiftool_cstr(s: str) -> bytes:
+    """
+    Make string compatible with exiftool's #[CSTR] directive
+    :param s  A string
+    :return   A "line" of bytes
+    """
+    # escape subset of
+    # https://docs.python.org/3/reference/lexical_analysis.html#escape-sequences
+    s = s.replace("\\", "\\\\")
+    s = s.replace("\a", "\\a")
+    s = s.replace("\b", "\\b")
+    s = s.replace("\f", "\\f")
+    s = s.replace("\n", "\\n")
+    s = s.replace("\r", "\\r")
+    s = s.replace("\t", "\\t")
+    s = s.replace("\v", "\\v")
+
+    return b"#[CSTR]" + s.encode("utf-8") + b"\n"
