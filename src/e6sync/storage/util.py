@@ -1,5 +1,9 @@
+import logging
+
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def date2path(date: datetime) -> Path:
@@ -50,11 +54,18 @@ def exiftool_sanitize(s: str | int) -> str:
             idx += len(seq)
             continue
 
-        # '\xa0'.encode("utf-8") -> b'\xc2\xa0'
-        # this is basically the inverse
-        seq = s_bytes[idx+2:idx+4]
-        s_bytes_san += b"\xc2" + bytes.fromhex(seq.decode("utf-8"))
+        # convert escape sequence to utf-8
+        # if that fails just keep it escaped (but warn)
+        seq = s_bytes[idx:idx+4]
         idx += 4
+        try:
+            utf_8 = (bytes.fromhex(seq[2:].decode("utf-8"))
+                     .decode("ISO-8859-1")
+                     .encode("utf-8"))
+            s_bytes_san += utf_8
+        except Exception:
+            logger.warn(f"Ignoring bad escape sequence: {repr(seq)}")
+            s_bytes_san += seq
 
     s = s_bytes_san.decode("utf-8")
 
