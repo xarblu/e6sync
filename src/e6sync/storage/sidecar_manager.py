@@ -42,12 +42,7 @@ class ExifData:
 
         Description = None
         if (val := post.description) != "":
-            # the issue:
-            # e6 likes sending '\xa0' (supposedly a non breaking space)
-            # and apparently python does not decode that properly
-            # to avoid unneeded sidecar updates backslashreplace everything
-            # that isn't pure ascii
-            Description = val.encode("ascii", "backslashreplace").decode()
+            Description = val
 
         TagsList = []
 
