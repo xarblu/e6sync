@@ -25,7 +25,7 @@ def exiftool_sanitize(s: str | int) -> str:
     # so we need to manually remove those \
     # we'll do this conservatively on an as-needed basis
     # to avoid issuses with chars that need escaping
-    for char in ["@"]:
+    for char in ["$", "@"]:
         s = s.replace(f"\\{char}", char)
 
     return s
